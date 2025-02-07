@@ -17,8 +17,7 @@ def fetch_data_from_pastebin():
         print("Error: Invalid JSON response from Pastebin")
         return {}
 
-# Load data at startup.  This is fine for this example, but for a
-# production app, you'd want to handle updates/reloading.
+# Load data at startup.
 DATA = fetch_data_from_pastebin()
 
 
@@ -37,23 +36,12 @@ def fetch_roproxy_data(roblox_id):
 
 @app.route('/users/v1/<roblox_id>/<product_name>', methods=['GET'])
 def get_user_product(roblox_id, product_name):
-    """
-    Handles GET requests to the API.
-
-    Args:
-        roblox_id (str):  The Roblox user ID.
-        product_name (str): The name of the product (with spaces encoded as %20).
-
-    Returns:
-        JSON: A JSON response containing user and product information.
-              If the user owns the product, isOwner will be True, otherwise False.
-              Returns 404 Not Found in case of errors.
-    """
+    """Handles GET requests for product ownership."""
     decoded_product_name = urllib.parse.unquote(product_name)
 
-    # Fetch latest data (consider caching to reduce Pastebin requests)
-    global DATA  # Access the global DATA variable
-    DATA = fetch_data_from_pastebin() #Update our data.
+    # Fetch latest data
+    global DATA
+    DATA = fetch_data_from_pastebin()
 
     product_data = DATA.get(decoded_product_name)
     if product_data is None:
@@ -63,7 +51,6 @@ def get_user_product(roblox_id, product_name):
     username = user_data.get("name")
     if username is None:
         abort(404, description=f"Could not retrieve username for Roblox ID {roblox_id}")
-
 
     found = False
     for key, user in product_data.items():
@@ -78,6 +65,11 @@ def get_user_product(roblox_id, product_name):
     }
     return jsonify(response_data)
 
+@app.route('/users/v1/<roblox_id>/', methods=['GET'])
+def get_all_user_data(roblox_id):
+    """Handles GET requests for all user data."""
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify(user_data)
 
 
 @app.route('/users/v1/<roblox_id>/description', methods=['GET'])
@@ -103,7 +95,7 @@ def get_user_created_date(roblox_id):
 @app.route('/users/v1/<roblox_id>/externalAppDisplayName', methods=['GET'])
 def get_user_external_app_display_name(roblox_id):
     user_data = fetch_roproxy_data(roblox_id)
-    return jsonify({"externalAppDisplayName": user_data.get("externalAppDisplayName")}) #Can be null
+    return jsonify({"externalAppDisplayName": user_data.get("externalAppDisplayName")})
 
 @app.route('/users/v1/<roblox_id>/hasVerifiedBadge', methods=['GET'])
 def get_user_has_verified_badge(roblox_id):
@@ -119,10 +111,7 @@ def get_user_id(roblox_id):
 def get_user_name(roblox_id):
     user_data = fetch_roproxy_data(roblox_id)
     return jsonify({"name": user_data.get("name", "")})
-@app.route('/users/v1/<roblox_id>', methods=['GET'])
-def get_all_user_data(roblox_id):
-     user_data = fetch_roproxy_data(roblox_id)
-     return jsonify(user_data)
+
 
 
 @app.errorhandler(404)
@@ -135,4 +124,4 @@ def internal_server_error(e):
 
 if __name__ == '__main__':
     # app.run(debug=True)    # Only for local development
-    pass  #Heroku configuration
+    pass
