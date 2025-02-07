@@ -22,6 +22,19 @@ def fetch_data_from_pastebin():
 DATA = fetch_data_from_pastebin()
 
 
+def fetch_roproxy_data(roblox_id):
+    """Fetches user data from RoProxy."""
+    roproxy_url = f"https://users.roproxy.com/v1/users/{roblox_id}"
+    try:
+        response = requests.get(roproxy_url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        abort(500, description=f"Error fetching data from RoProxy: {e}")
+    except ValueError:
+        abort(500, description="Invalid JSON response from RoProxy")
+
+
 @app.route('/users/v1/<roblox_id>/<product_name>', methods=['GET'])
 def get_user_product(roblox_id, product_name):
     """
@@ -46,18 +59,11 @@ def get_user_product(roblox_id, product_name):
     if product_data is None:
         abort(404, description=f"Product '{decoded_product_name}' not found")
 
-    roproxy_url = f"https://users.roproxy.com/v1/users/{roblox_id}"
-    try:
-        response = requests.get(roproxy_url)
-        response.raise_for_status()
-        user_data = response.json()
-        username = user_data.get("name")
-        if username is None:
-            abort(404, description=f"Could not retrieve username for Roblox ID {roblox_id}")
-    except requests.exceptions.RequestException as e:
-        abort(500, description=f"Error fetching data from RoProxy: {e}")
-    except ValueError:
-        abort(500, description="Invalid JSON response from RoProxy")
+    user_data = fetch_roproxy_data(roblox_id)
+    username = user_data.get("name")
+    if username is None:
+        abort(404, description=f"Could not retrieve username for Roblox ID {roblox_id}")
+
 
     found = False
     for key, user in product_data.items():
@@ -72,6 +78,53 @@ def get_user_product(roblox_id, product_name):
     }
     return jsonify(response_data)
 
+
+
+@app.route('/users/v1/<roblox_id>/description', methods=['GET'])
+def get_user_description(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"description": user_data.get("description", "")})
+
+@app.route('/users/v1/<roblox_id>/isBanned', methods=['GET'])
+def get_user_is_banned(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"isBanned": user_data.get("isBanned", False)})
+
+@app.route('/users/v1/<roblox_id>/displayName', methods=['GET'])
+def get_user_display_name(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"displayName": user_data.get("displayName", "")})
+
+@app.route('/users/v1/<roblox_id>/created', methods=['GET'])
+def get_user_created_date(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"created": user_data.get("created", "")})
+
+@app.route('/users/v1/<roblox_id>/externalAppDisplayName', methods=['GET'])
+def get_user_external_app_display_name(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"externalAppDisplayName": user_data.get("externalAppDisplayName")}) #Can be null
+
+@app.route('/users/v1/<roblox_id>/hasVerifiedBadge', methods=['GET'])
+def get_user_has_verified_badge(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"hasVerifiedBadge": user_data.get("hasVerifiedBadge", False)})
+
+@app.route('/users/v1/<roblox_id>/id', methods=['GET'])
+def get_user_id(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"id": user_data.get("id")})
+
+@app.route('/users/v1/<roblox_id>/name', methods=['GET'])
+def get_user_name(roblox_id):
+    user_data = fetch_roproxy_data(roblox_id)
+    return jsonify({"name": user_data.get("name", "")})
+@app.route('/users/v1/<roblox_id>', methods=['GET'])
+def get_all_user_data(roblox_id):
+     user_data = fetch_roproxy_data(roblox_id)
+     return jsonify(user_data)
+
+
 @app.errorhandler(404)
 def resource_not_found(e):
     return jsonify(error=str(e)), 404
@@ -81,5 +134,5 @@ def internal_server_error(e):
     return jsonify(error=str(e)), 500
 
 if __name__ == '__main__':
-    #  app.run(debug=True)   # Only for local development
-    pass #Heroku configuration
+    # app.run(debug=True)    # Only for local development
+    pass  #Heroku configuration
