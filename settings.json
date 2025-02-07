@@ -1,0 +1,11 @@
+{
+  "RATE_LIMIT_PER_PERIOD": 60,
+  "RATE_LIMIT_PERIOD_SECONDS": 60,
+  "BAN_DURATION_SECONDS": 300,
+  "MAX_BAN_COUNT": 3,
+  "WHITELISTED_IPS": [
+    "127.0.0.1",
+    "::1"
+  ],
+  "PASTEBIN_URL": "https://pastebin.com/raw/JkPHuYjq"
+}
