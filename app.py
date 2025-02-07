@@ -1,85 +1,55 @@
-from flask import Flask, jsonify, abort
+# app.py
+from flask import Flask, jsonify, abort, request
+from data import DATA
+import urllib.parse
 
 app = Flask(__name__)
 
-# Ваши данные (вместо базы данных)
-DATA = {
-    "Example": {
-        "NmNhWaZv2hJVG0r2n8U432fXEg7XeIsyA0Q1zsL0kh826sF08wR9xdGoxyWs2aMNLk9fGAD4RkhV9DFESuEBOshSsm": "DiasDamina",
-        "jPwIhjye7bp6fMA57mnucL5sMIC7BElWZhxlHfui0CqtLk5nnr": "OhNoBabyCryy"
-    },
-    "Product1": {
-        "WQDqqx2j3Fh9oCG7EmFCIhimgxW3AobF1IZpVXsZH4uVYjK8gM": "alia_sarik",
-        "zcfAmGDJ3kFT4FKh5so6UUbkL31U6W9yywlUw60U0UVB1VeyBi": "Robzilain4",
-        "Hcrer8gzRiJQm3P8Pnhfo0kw7m6tCjzfcDYQChuPB5NwvaX25O": "Damil_100",
-        "DJZZBnEa1nLn7TxoRddu8vQA8Qyae6MAkI94ARI7dQyJn5Iq4S": "DiasDamina",
-        "LOXqLVRfXr1TwvlDnETSPMGPnnuRoHKZmXxE0gQW9sV04YN5xw": "OhNoBabyCryy"
-    },
-    "McDonald": {
-        "rnfJsA_Z-.2DFT%hbtO3W=F897xITO4WFymgaE1s": "alia_sarik",
-        "mUs6vW4MD994vNUQW7whMKb7u7hUwPGj": "DiasDamina"
-    },
-    "BEPC Electricity": {
-        "FWR2E9n5iRqUzTlCfRuz6gy4u6jOnKlm": "DiasDamina",
-        "wx546G0rUZa8qwDSsTVz4DCRY8MfzboZ": "OhNoBabyCryy"
-    },
-    "AntiCheat": {
-        "3nJdiZDaEublqS4VjbhUDXxJQ7AYq5glvmfTorrPFXsVYens55": "DiasDamina",
-        "5wjbwdZlcdjt8zfoS73LFmn2lo38XtqqRLvFbvUOFZNlVQES8d": "OhNoBabyCryy"
-    },
-    "k9AfI9TFE202Zw6h2lgxpHHvk": {
-        "b02MjsgbNjLp2emTz1dhRC3xHtb1j7NxF4c": "diasdamina",
-        "admin": "DiasDamina",
-        "admin2": "OhNoBabyCryy"
-    },
-    "AI Bot": {
-        "4092db0f-0dad-4c2e-9da3-5b12408eb0f2": "OhNoBabyCryy"
-    },
-    "Proxy Service": {
-        "07e62944-7023-4c7b-aebf-d788a9c9b5b5": "DiasDamina"
-    }
-}
-
-
-@app.route('/users/v1/<username>/<product_name>')
-def check_ownership(username, product_name):
+@app.route('/users/v1/<username>/<product_name>', methods=['GET'])
+def get_user_product(username, product_name):
     """
-    Проверяет, есть ли у пользователя доступ к продукту.
+    Обрабатывает GET-запросы к API.
 
     Args:
-        username (str): Имя пользователя.
-        product_name (str): Название продукта (с пробелами, как в исходных данных).
+        username (str): Имя пользователя (ник).
+        product_name (str): Название продукта (с пробелами, закодированными как %20).
 
     Returns:
-        JSON: Объект с информацией о пользователе и владении продуктом.
+        JSON:  Ответ в формате JSON, содержащий информацию о пользователе и продукте.
+               Если пользователь владеет продуктом, isOwner будет True, иначе False.
+               В случае ошибки возвращается 404 Not Found.
     """
+    decoded_product_name = urllib.parse.unquote(product_name) # Декодируем URL
+    
+    # Проверяем наличие продукта в данных.  Используем .get() для безопасного доступа.
+    product_data = DATA.get(decoded_product_name)
+    if product_data is None:
+        abort(404, description=f"Product '{decoded_product_name}' not found")
 
-    product_name = product_name.replace("%20", " ") #декодируем URL если есть пробелы
+    # Ищем пользователя в данных продукта.
+    found = False
+    for key, user in product_data.items():
+        if user.lower() == username.lower():
+            found = True
+            break  # Выходим из цикла, как только нашли пользователя
 
-    if product_name not in DATA:
-        abort(404, description=f"Product '{product_name}' not found")
-
-    product_data = DATA[product_name]
-
-    is_owner = False
-    for key, owner in product_data.items():
-        if owner == username:
-            is_owner = True
-            break
-
-    return jsonify({
+    # Формируем ответ.
+    response_data = {
         "username": username,
-        "isOwner": is_owner,
-        "product": product_name
-    })
+        "isOwner": found,
+        "product": decoded_product_name
+    }
 
-
+    return jsonify(response_data)
 
 @app.errorhandler(404)
 def resource_not_found(e):
-    """Обработчик ошибки 404 (Not Found)."""
+    """
+    Обработчик ошибок 404.  Возвращает JSON-ответ с описанием ошибки.
+    """
     return jsonify(error=str(e)), 404
 
-
 if __name__ == '__main__':
-    app.run(debug=True)  # debug=True для разработки, уберите в продакшене!
+    # Запуск приложения (только для локальной разработки, не для Heroku)
+    # app.run(debug=True)  # debug=True  -  ОТКЛЮЧИТЬ в продакшене!
+    pass # Убираем запуск через python app.py, heroku сам запустит через gunicorn
