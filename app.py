@@ -26,9 +26,9 @@ def load_settings():
                 if not isinstance(settings[key], (int, float)):
                     raise ValueError(f"Setting '{key}' must be a number")
             if not isinstance(settings.get("WHITELISTED_IPS", []), list):
-                 raise ValueError("WHITELISTED_IPS must be a list")
+                raise ValueError("WHITELISTED_IPS must be a list")
             if not isinstance(settings.get("PASTEBIN_URL", ""), str):
-                 raise ValueError("PASTEBIN_URL must be a string.")
+                raise ValueError("PASTEBIN_URL must be a string.")
 
             return settings
 
@@ -37,7 +37,7 @@ def load_settings():
         return {
             "RATE_LIMIT_PER_PERIOD": 10,
             "RATE_LIMIT_PERIOD_SECONDS": 60,
-            "BAN_DURATION_SECONDS": 300,
+            "RATE_LIMIT_DURATION_SECONDS": 300,
             "MAX_BAN_COUNT": 3,
             "WHITELISTED_IPS": [],
             "PASTEBIN_URL": "https://pastebin.com/raw/JkPHuYjq"
@@ -47,7 +47,7 @@ def load_settings():
         return {
             "RATE_LIMIT_PER_PERIOD": 10,
             "RATE_LIMIT_PERIOD_SECONDS": 60,
-            "BAN_DURATION_SECONDS": 300,
+            "RATE_LIMIT_DURATION_SECONDS": 300,
             "MAX_BAN_COUNT": 3,
             "WHITELISTED_IPS": [],
             "PASTEBIN_URL": "https://pastebin.com/raw/JkPHuYjq"
@@ -93,7 +93,7 @@ def check_rate_limit(ip_address):
     if len(request_timestamps[ip_address]) >= SETTINGS["RATE_LIMIT_PER_PERIOD"]:
         ban_counts[ip_address] = ban_counts.get(ip_address, 0) + 1
         if ban_counts[ip_address] >= SETTINGS["MAX_BAN_COUNT"]:
-             ban_list[ip_address] = now + SETTINGS["BAN_DURATION_SECONDS"]
+            ban_list[ip_address] = now + SETTINGS["BAN_DURATION_SECONDS"]
         return False
 
     request_timestamps[ip_address].append(now)
@@ -118,17 +118,23 @@ DATA = fetch_data_from_pastebin()
 
 # --- RoProxy Data Fetching ---
 
-def fetch_roproxy_data(roblox_id):
-    """Fetches user data from RoProxy."""
-    roproxy_url = f"https://users.roproxy.com/v1/users/{roblox_id}"
+def fetch_roproxy_data(url, *args):
+    """Fetches data from RoProxy, handling variable arguments in the URL."""
+    # Construct the URL by replacing placeholders
     try:
-        response = requests.get(roproxy_url)
+        final_url = url.format(*args)
+        response = requests.get(final_url)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        abort(500, description=f"Error fetching data from RoProxy: {e}")
+        abort(500, description=f"Error fetching data from RoProxy ({final_url}): {e}")
     except ValueError:
-        abort(500, description="Invalid JSON response from RoProxy")
+        abort(500, description=f"Invalid JSON response from RoProxy ({final_url})")
+    except KeyError as e:
+        abort(500, description=f"Missing URL parameter: {e}")  # Handle missing placeholders
+    except IndexError as e:
+        abort(500, description=f"Not enough arguments provided for URL format: {e}")
+
 
 # --- Route Handlers ---
 @app.before_request
@@ -153,7 +159,7 @@ def get_user_product(roblox_id, product_name):
     if product_data is None:
         abort(404, description=f"Product '{decoded_product_name}' not found")
 
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id)  # Use fetch_roproxy_data
     username = user_data.get("name")
     if username is None:
         abort(404, description=f"Could not retrieve username for Roblox ID {roblox_id}")
@@ -173,48 +179,92 @@ def get_user_product(roblox_id, product_name):
 
 @app.route('/users/v1/<roblox_id>/', methods=['GET'])
 def get_all_user_data(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify(user_data)
 
 @app.route('/users/v1/<roblox_id>/description', methods=['GET'])
 def get_user_description(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"description": user_data.get("description", "")})
 
 @app.route('/users/v1/<roblox_id>/isBanned', methods=['GET'])
 def get_user_is_banned(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"isBanned": user_data.get("isBanned", False)})
 
 @app.route('/users/v1/<roblox_id>/displayName', methods=['GET'])
 def get_user_display_name(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"displayName": user_data.get("displayName", "")})
 
 @app.route('/users/v1/<roblox_id>/created', methods=['GET'])
 def get_user_created_date(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"created": user_data.get("created", "")})
 
 @app.route('/users/v1/<roblox_id>/externalAppDisplayName', methods=['GET'])
 def get_user_external_app_display_name(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"externalAppDisplayName": user_data.get("externalAppDisplayName")})
 
 @app.route('/users/v1/<roblox_id>/hasVerifiedBadge', methods=['GET'])
 def get_user_has_verified_badge(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"hasVerifiedBadge": user_data.get("hasVerifiedBadge", False)})
 
 @app.route('/users/v1/<roblox_id>/id', methods=['GET'])
 def get_user_id(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"id": user_data.get("id")})
 
 @app.route('/users/v1/<roblox_id>/name', methods=['GET'])
 def get_user_name(roblox_id):
-    user_data = fetch_roproxy_data(roblox_id)
+    user_data = fetch_roproxy_data("https://users.roproxy.com/v1/users/{}", roblox_id) # Use fetch_roproxy_data
     return jsonify({"name": user_data.get("name", "")})
+
+# --- BUNDLES ---
+@app.route('/catalog/v1/assets/<path:asset_data>/bundles', methods=['GET'])
+def get_asset_bundles(asset_data):
+    return jsonify(fetch_roproxy_data('http://catalog.roproxy.com/v1/assets/{}/bundles', asset_data))
+
+@app.route('/catalog/v1/bundles/<path:bundle_data>/details', methods=['GET'])
+def get_bundle_details_v1(bundle_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/bundles/{}/details', bundle_data))
+
+@app.route('/bundles/<path:bundle_data>/details', methods=['GET'])
+def get_bundle_details_v2(bundle_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/bundles/{}/details', bundle_data))
+
+@app.route('/catalog/v1/assets/<path:asset_data>/recommendations', methods=['GET'])
+def get_asset_recommendations(asset_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/bundles/{}/details', asset_data)) #Corrected URL
+
+@app.route('/users/v1/bundles/<path:user_data>', methods=['GET'])
+def get_user_bundles(user_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/users/{}/bundles', user_data))
+
+# --- FAVORITES ---
+@app.route('/favorites/v1/assets/<path:asset_data>/count', methods=['GET'])
+def get_asset_favorites_count(asset_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/favorites/assets/{}/count', asset_data))
+
+@app.route('/favorites/v1/bundles/<path:bundle_data>/count', methods=['GET'])
+def get_bundle_favorites_count(bundle_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/favorites/bundles/{}/count', bundle_data))
+
+@app.route('/favorites/v1/users/<path:user_data>/assets/<path:asset_data>/favorite', methods=['GET'])
+def get_user_asset_favorite(user_data, asset_data):
+    return jsonify(fetch_roproxy_data('https://catalog.roproxy.com/v1/favorites/users/{}/assets/{}/favorite', user_data, asset_data))
+
+# --- USERS ---
+@app.route('/users/v1/search/<path:search_query>', methods=['GET'])
+def search_users(search_query):
+    return jsonify(fetch_roproxy_data('https://users.roproxy.com/v1/users/search?keyword={}', search_query))
+
+# --- FRIENDS ---
+@app.route('/friends/v1/followings/<path:user_data>/count', methods=['GET'])
+def get_followings_count(user_data):
+    return jsonify(fetch_roproxy_data('https://friends.roproxy.com/v1/users/{}/followers/count', user_data))  # Corrected URL
 
 
 @app.errorhandler(404)
