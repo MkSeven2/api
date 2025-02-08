@@ -5,14 +5,12 @@ import time
 import json
 from collections import deque
 import threading
-import os  # Import the os module
-
+import os
 
 app = Flask(__name__)
 
 # --- Configuration (Editable Settings) ---
 
-# Load settings from a JSON file
 SETTINGS_FILE = 'settings.json'
 
 def load_settings():
@@ -20,13 +18,12 @@ def load_settings():
     try:
         with open(SETTINGS_FILE, 'r') as f:
             settings = json.load(f)
-            # Validate settings (important for security)
             if not isinstance(settings, dict):
                 raise ValueError("settings.json must contain a JSON object")
             for key in ['RATE_LIMIT_PER_PERIOD', 'RATE_LIMIT_PERIOD_SECONDS', 'BAN_DURATION_SECONDS', 'MAX_BAN_COUNT']:
                 if key not in settings:
                     raise ValueError(f"Missing required setting: {key}")
-                if not isinstance(settings[key], (int, float)):  #allow float for sub-second periods.
+                if not isinstance(settings[key], (int, float)):
                     raise ValueError(f"Setting '{key}' must be a number")
             if not isinstance(settings.get("WHITELISTED_IPS", []), list):
                  raise ValueError("WHITELISTED_IPS must be a list")
@@ -37,17 +34,17 @@ def load_settings():
 
     except FileNotFoundError:
         print(f"Error: {SETTINGS_FILE} not found.  Using default settings.")
-        return {  # Default settings (fallback)
+        return {
             "RATE_LIMIT_PER_PERIOD": 10,
             "RATE_LIMIT_PERIOD_SECONDS": 60,
             "BAN_DURATION_SECONDS": 300,
             "MAX_BAN_COUNT": 3,
             "WHITELISTED_IPS": [],
-            "PASTEBIN_URL": "https://pastebin.com/raw/JkPHuYjq" #  Default Pastebin URL
+            "PASTEBIN_URL": "https://pastebin.com/raw/JkPHuYjq"
         }
     except (json.JSONDecodeError, ValueError) as e:
         print(f"Error loading settings from {SETTINGS_FILE}: {e}. Using default settings.")
-        return {  # Default settings (fallback) - same as above
+        return {
             "RATE_LIMIT_PER_PERIOD": 10,
             "RATE_LIMIT_PERIOD_SECONDS": 60,
             "BAN_DURATION_SECONDS": 300,
@@ -61,17 +58,15 @@ SETTINGS = load_settings()
 
 # --- Rate Limiting Data Structures ---
 
-# Use a deque for efficient queue management (FIFO)
-request_timestamps = {}  # Key: IP address, Value: deque of request timestamps
-ban_list = {}  # Key: IP address, Value: unban timestamp
-ban_counts = {} # Key: IP address, Value: number of times banned.
+request_timestamps = {}
+ban_list = {}
+ban_counts = {}
 
 # --- Helper Functions ---
 
 def get_client_ip():
-    """Gets the client's real IP address, handling proxies correctly."""
+    """Gets the client's real IP address."""
     if "X-Forwarded-For" in request.headers:
-        # Use the first IP in the X-Forwarded-For list (the client's IP)
         return request.headers.getlist("X-Forwarded-For")[0].split(',')[0]
     return request.remote_addr
 
@@ -80,10 +75,7 @@ def is_whitelisted(ip_address):
     return ip_address in SETTINGS["WHITELISTED_IPS"]
 
 def check_rate_limit(ip_address):
-    """Checks and enforces the rate limit for a given IP address.
-       Returns True if the request should be allowed, False if it should be blocked.
-    """
-
+    """Checks and enforces the rate limit."""
     now = time.time()
 
     if ip_address in ban_list:
@@ -95,42 +87,39 @@ def check_rate_limit(ip_address):
     if ip_address not in request_timestamps:
         request_timestamps[ip_address] = deque()
 
-    # Remove timestamps older than the rate limit period
     while request_timestamps[ip_address] and request_timestamps[ip_address][0] < now - SETTINGS["RATE_LIMIT_PERIOD_SECONDS"]:
         request_timestamps[ip_address].popleft()
 
     if len(request_timestamps[ip_address]) >= SETTINGS["RATE_LIMIT_PER_PERIOD"]:
-        # Rate limit exceeded.  Ban the IP if necessary
         ban_counts[ip_address] = ban_counts.get(ip_address, 0) + 1
         if ban_counts[ip_address] >= SETTINGS["MAX_BAN_COUNT"]:
              ban_list[ip_address] = now + SETTINGS["BAN_DURATION_SECONDS"]
-        return False # Block request
+        return False
 
     request_timestamps[ip_address].append(now)
-    return True  # Allow request
+    return True
 
 
 # --- Pastebin Data Fetching ---
 def fetch_data_from_pastebin():
-    """Fetches data from Pastebin, handling errors robustly."""
+    """Fetches data from Pastebin."""
     try:
         response = requests.get(SETTINGS["PASTEBIN_URL"])
-        response.raise_for_status()  # Raise HTTPError for bad requests (4xx or 5xx)
+        response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
         print(f"Error fetching data from Pastebin: {e}")
-        return {}  # Return an empty dictionary on error
+        return {}
     except ValueError:
         print("Error: Invalid JSON response from Pastebin")
         return {}
 
-# Load data at startup.  Good practice to make this a global variable.
 DATA = fetch_data_from_pastebin()
 
 # --- RoProxy Data Fetching ---
 
 def fetch_roproxy_data(roblox_id):
-    """Fetches user data from RoProxy, handling errors and returning appropriate status codes."""
+    """Fetches user data from RoProxy."""
     roproxy_url = f"https://users.roproxy.com/v1/users/{roblox_id}"
     try:
         response = requests.get(roproxy_url)
@@ -144,24 +133,21 @@ def fetch_roproxy_data(roblox_id):
 # --- Route Handlers ---
 @app.before_request
 def before_request():
-    """Executed before each request. Handles rate limiting and whitelisting."""
+    """Handles rate limiting and whitelisting."""
     ip_address = get_client_ip()
-    g.ip_address = ip_address # Store IP for logging/debugging in other routes.
+    g.ip_address = ip_address
     if is_whitelisted(ip_address):
-        return  # Skip rate limiting for whitelisted IPs
+        return
     if not check_rate_limit(ip_address):
+        # Modified 429 error response
         abort(429, description=f"Too Many Requests. Please try again later. You are rate limited. Bans: {ban_counts.get(ip_address, 0)}")
 
 
 @app.route('/users/v1/<roblox_id>/<product_name>', methods=['GET'])
 def get_user_product(roblox_id, product_name):
-    """Handles GET requests for product ownership, with improved error handling."""
     decoded_product_name = urllib.parse.unquote(product_name)
-
-    # Fetch latest data
     global DATA
     DATA = fetch_data_from_pastebin()
-
 
     product_data = DATA.get(decoded_product_name)
     if product_data is None:
@@ -185,8 +171,6 @@ def get_user_product(roblox_id, product_name):
     }
     return jsonify(response_data)
 
-
-# --- Other Routes (Simplified - no changes needed) ---
 @app.route('/users/v1/<roblox_id>/', methods=['GET'])
 def get_all_user_data(roblox_id):
     user_data = fetch_roproxy_data(roblox_id)
@@ -232,7 +216,7 @@ def get_user_name(roblox_id):
     user_data = fetch_roproxy_data(roblox_id)
     return jsonify({"name": user_data.get("name", "")})
 
-# --- Error Handlers ---
+
 @app.errorhandler(404)
 def resource_not_found(e):
     return jsonify(error=str(e)), 404
@@ -241,28 +225,26 @@ def resource_not_found(e):
 def internal_server_error(e):
     return jsonify(error=str(e)), 500
 
-@app.errorhandler(429)  # Catch the Too Many Requests error
+@app.errorhandler(429)
 def rate_limit_error(e):
-    return jsonify(error=str(e)), 429
-# --- Reload Settings on File Change (Optional) ---
+    # Include the IP address in the 429 error response
+    return jsonify(error=str(e), ip=g.ip_address), 429
+
 def watch_settings_file():
     """Reloads settings if the settings file changes."""
     last_modified = os.stat(SETTINGS_FILE).st_mtime
     while True:
-        time.sleep(5)  # Check every 5 seconds
+        time.sleep(5)
         current_modified = os.stat(SETTINGS_FILE).st_mtime
         if current_modified != last_modified:
             print(f"{SETTINGS_FILE} changed. Reloading settings.")
             global SETTINGS
-            SETTINGS = load_settings()  # Reload
+            SETTINGS = load_settings()
             last_modified = current_modified
 
-# --- Main Execution ---
-
 if __name__ == '__main__':
-    # Start settings file watcher in a separate thread
-    if os.path.exists(SETTINGS_FILE):  #Only start watcher if file exists.
+    if os.path.exists(SETTINGS_FILE):
         watcher_thread = threading.Thread(target=watch_settings_file, daemon=True)
         watcher_thread.start()
-    # app.run(debug=True) #  Only for local development!  Use a production server for deployment.
+    # app.run(debug=True)
     pass
